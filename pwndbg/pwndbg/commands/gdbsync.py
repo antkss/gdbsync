@@ -16,12 +16,12 @@ def translate_offset(offset, module):
     first_page = min(pages, key=lambda page: page.vaddr)
     addr = offset - first_page.vaddr
     if not any(offset in p for p in pages):
-        print(
-            "Offset 0x%x rebased to module %s as 0x%x is beyond module's "
-            "memory pages:" % (addr, module, offset)
-        )
-        for p in pages:
-            print(p)
+        # print(
+        #     "Offset 0x%x rebased to module %s as 0x%x is beyond module's "
+        #     "memory pages:" % (addr, module, offset)
+        # )
+        # for p in pages:
+        #     print(p)
         return 0
 
     return addr

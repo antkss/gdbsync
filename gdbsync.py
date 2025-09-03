@@ -4,7 +4,6 @@ import ida_nalt
 import idc
 import json
 bpt_file = {}
-len_bpt_file = 0
 target_file = ""
 target_ida_debug = ""
 try:
@@ -57,14 +56,12 @@ def remove_bookmark(offset):
             return
 def diff_breakpoint():
     global bpt_file
-    global len_bpt_file
     print("checking breakpoint ...")
     if target_ida_debug:
         try: 
             bpt_file = json.loads(open(target_ida_debug, "r").read())
         except:
             pass
-    len_bpt_file = len(bpt_file)
     image_base = ida_nalt.get_imagebase()   
     bpt_all = parse_address(list_all_breakpoints())
     for item in bpt_file:
@@ -85,24 +82,20 @@ class MyDbgHook(idaapi.DBG_Hooks):
         # print(f"bpt: {bpt.loc.ea()}")
         image_base = ida_nalt.get_imagebase()   
         addr = hex(bpt.ea - image_base)
-        is_enabled = bpt.flags & idaapi.BPT_ENABLED
+        is_exist = ida_dbg.exist_bpt(bpt.ea)
         if eval(addr) > 0:
-            if addr in bpt_file:
-                if bpt_file[addr] == 0:
-                    bpt_file[addr] = 1
-                    add_bookmark(bpt.ea, addr)
-                elif is_enabled:
-                    if bpt_file[addr] == 1:
-                        remove_bpt(addr)
-                        remove_bookmark(bpt.ea)
-            else:
+           if is_exist:
                bpt_file[addr] = 1
                add_bookmark(bpt.ea, addr)               
+           else:
+               bpt_file[addr] = 0
+               remove_bookmark(bpt.ea)
         if target_ida_debug:
             print("written breakpoints")
             open(target_ida_debug, "w").write(json.dumps(bpt_file))
         print(f"target: {target_ida_debug}")
         print(f"{bpt_file = }")
+        print(f"is enabled: {is_exist}")
         print(f"current_change: {hex(bpt.ea)}")
 def diff_list(list_a, list_b):
     set_a = set(list_a)
