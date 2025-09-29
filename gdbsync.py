@@ -8,9 +8,23 @@ target_file = ""
 target_ida_debug = ""
 try:
     target_file = idaapi.get_root_filename()
-    target_ida_debug = "." + idaapi.get_root_filename() + ".idbg"
+    target_ida_debug = "." + target_file + ".idbg"
 except:
     pass
+def check_pie(path):
+    if path:
+        with open(path, "rb") as f:
+            f.seek(16)   # skip to e_type field in ELF header
+            e_type = int.from_bytes(f.read(2), "little")
+            if e_type == 3:   # ET_DYN
+                return True
+            elif e_type == 2: # ET_EXEC
+                return False
+            else:
+                return None
+    else:
+        return None
+
 def list_all_breakpoints() -> list:
     """
     Iterates through all breakpoints and prints their properties.
@@ -64,13 +78,26 @@ def diff_breakpoint():
             pass
     image_base = ida_nalt.get_imagebase()   
     bpt_all = parse_address(list_all_breakpoints())
-    for item in bpt_file:
-        if item not in bpt_all and bpt_file[item] == 1:
-            ida_dbg.add_bpt(eval(item) + image_base, 0, idaapi.BPT_SOFT)
-            add_bookmark(eval(item) + image_base, item)
-        elif bpt_file[item] == 0:
-            ida_dbg.del_bpt(eval(item) + image_base)
-            remove_bookmark(eval(item) + image_base)
+    is_pie = check_pie(target_file)
+    print(f"target_file: {target_file}")
+    if is_pie == None:
+        print("can't check pie")
+    if is_pie:
+        for item in bpt_file:
+            if item not in bpt_all and bpt_file[item] == 1:
+                ida_dbg.add_bpt(eval(item) + image_base, 0, idaapi.BPT_SOFT)
+                add_bookmark(eval(item) + image_base, item)
+            elif bpt_file[item] == 0:
+                ida_dbg.del_bpt(eval(item) + image_base)
+                remove_bookmark(eval(item) + image_base)
+    else:
+        for item in bpt_file:
+            if item not in bpt_all and bpt_file[item] == 1:
+                ida_dbg.add_bpt(eval(item), 0, idaapi.BPT_SOFT)
+                add_bookmark(eval(item), item)
+            elif bpt_file[item] == 0:
+                ida_dbg.del_bpt(eval(item))
+                remove_bookmark(eval(item))
     print(f"File Name: {target_ida_debug}")
     print("setting up hook... ")       
 
@@ -80,9 +107,14 @@ class MyDbgHook(idaapi.DBG_Hooks):
         print("breakpoint changed... \n")
         print("checking breakpoint ...")
         # print(f"bpt: {bpt.loc.ea()}")
+        is_pie = check_pie(target_file)
         image_base = ida_nalt.get_imagebase()   
-        addr = hex(bpt.ea - image_base)
         is_exist = ida_dbg.exist_bpt(bpt.ea)
+        addr = 0
+        if is_pie:
+            addr = hex(bpt.ea - image_base)
+        else:
+            addr = hex(bpt.ea)
         if eval(addr) > 0:
            if is_exist:
                bpt_file[addr] = 1
@@ -93,10 +125,10 @@ class MyDbgHook(idaapi.DBG_Hooks):
         if target_ida_debug:
             print("written breakpoints")
             open(target_ida_debug, "w").write(json.dumps(bpt_file))
-        print(f"target: {target_ida_debug}")
-        print(f"{bpt_file = }")
-        print(f"is enabled: {is_exist}")
-        print(f"current_change: {hex(bpt.ea)}")
+        # print(f"target: {target_ida_debug}")
+        # print(f"{bpt_file = }")
+        # print(f"is enabled: {is_exist}")
+        # print(f"current_change: {hex(bpt.ea)}")
 def diff_list(list_a, list_b):
     set_a = set(list_a)
     set_b = set(list_b)
@@ -104,11 +136,17 @@ def diff_list(list_a, list_b):
     return list(result_set)
 def parse_address(bpt) -> dict:
     image_base = ida_nalt.get_imagebase()   
+    is_pie = check_pie(target_file)
     list_item = {}
     for item in bpt:
         is_enabled = item.flags & idaapi.BPT_ENABLED
+        address = 0
+        if is_pie:
+            address = item.ea - image_base
+        else:
+            address = item.ea
         if is_enabled:
-            list_item[hex(item.ea - image_base)] = 1
+            list_item[hex(address)] = 1
     return list_item
 
 class GdbSyncPlugin(idaapi.plugin_t):
